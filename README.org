@@ -1,0 +1,69 @@
+* syncthing-activity
+This is a fork of [[https://github.com/jpmens/syncthing-activity][syncthing-activity]] by jpmens. The main difference between this
+fork and the original is the support parse relevant information to a script.
+
+This small program uses [[https://syncthing.net][Syncthing]]'s [[https://docs.syncthing.net/dev/rest.html][REST API]] to determine the
+changes ocurring on the local instance of Syncthing. (No worries: the
+API is queried on the machine on which you run =syncthing-activity=.)
+
+** apikey
+Open Syncthing's Web UI at =http://127.0.0.1:8384=, click on /Actions/
+and /Settings/. On the Settings panel, /General/ tab you'll find the API
+key on the right. Copy that into an environment variable before
+launching =syncthing-activity.py=:
+
+#+begin_src sh
+  export SYNCTHING_APIKEY="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  ./syncthing-activity.py
+#+end_src
+
+If your Syncthing is listening on a special URL, you can additionally
+override the default URL:
+
+#+begin_src sh
+  export SYNCTHING_URL="http://localhost:8384"
+#+end_src
+
+** usage
+=syncthing-activity=, when executed as-is, behaves just as the original
+repository except with the event API =ItemFinished= instead of =ItemStarted=. It
+can be reverted by specifying =ItemStarted= as the first positional argument.
+#+begin_src shell
+  syncthing-activity.py "ItemStarted"
+#+end_src
+The event APIs that can be used as positional arguments are =ItemFinished= and =ItemStarted=.
+
+If the purpose is to parse the API results to a script for processing, you can
+do so by making use of the =--script= option. Additional arguments are passed
+through as-is after specifiying the script.
+
+For example, the following snippet will use the =ItemFinished= event API and
+pass the arguments as well as =--additional-arg1= to a script in
+=~/scripts/syncthing-postprocess=
+#+begin_src shell
+  syncthing-activity.py --script "~/scripts/syncthing-postprocess" --additional-arg1
+#+end_src
+
+Additional flags that can be passed to the script (these need to be set up in
+the script manually):
+- =--dry_run= performs a dry run of the script
+- =--quiet= reduces the verbosity of the script
+
+** example
+In the absence of a script, the program currently outputs the folder label in
+which an update is detected, the object (file or directory) and type of update
+as well as the object's name:
+
+#+begin_example
+      owntracks file  update     platform/ansible/templates/config.f
+           take file  update     configs/contacts/mac/.git/index
+           take file  metadata   configs/contacts/mac/ab.json
+           take file  update     playground/syncthing/events/requirements.txt
+           take file  update     playground/syncthing/events/syncthing-activity.py
+      on-github file  update     owntracks/recorder/Changelog
+           take dir   update     playground/syncthing/events/docs
+           take file  delete     playground/syncthing/events/menu
+#+end_example
+
+
+With a script, these information will be passed to the script.

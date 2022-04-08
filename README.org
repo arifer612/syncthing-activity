@@ -67,3 +67,33 @@ as well as the object's name:
 
 
 With a script, these information will be passed to the script.
+
+** docker
+This mini-application can be deployed through a Docker image. You can retrieve
+the image from Dockerhub using
+#+begin_src shell
+  docker pull arifer612/syncthing-activity:latest
+#+end_src
+
+When running with =docker run=, feed the necessary environment variables using
+the =-e= flag. Environments:
+- =EVENT_API= : Syncthing event API. Currently supports only =ItemFinished=
+  (default) and =ItemStarted=
+- =SYNCTHING_URL= : URL to the Syncthing instance. The default is
+  =http://localhost:8384=
+- =SYNCTHING_API= : API key to the Syncthing instance.
+- =SCRIPT=: Name of the script after it has been mounted into the container in
+  the ~/script~ directory.
+- =ARGUMENTS=: Additional arguments that can be passed into the script.
+
+Example:
+#+begin_src shell
+  docker run -d \
+         -v ~/scripts/:/scripts:rw \
+         -e "EVENT_API=ItemFinished"
+         -e "SYNCTHING_URL=http://localhost:8384" \
+         -e "SYNCTHING_API=xxxxx" \
+         -e "SCRIPT=syncthing-postprocess.py" \
+         -e "ARGUMENTS=positional_arg1 --opt1 arg1 --opt2 arg2" \
+         arifer612/syncthing-activity:latest
+#+end_src

@@ -59,11 +59,11 @@ def process(array, event_type, script, dry_run, quiet, unknown_args):
             if script and script != "None":
                 main_call = ["/usr/bin/env", "python3", script,
                                folder_label, data_type, action, item]
-                if True:
+                if dry_run:
                     main_call.append("--dry_run")
                 if quiet:
                     main_call.append("--quiet")
-                if True:
+                if unknown_args:
                     main_call += unknown_args
 
                 subprocess.call(main_call)

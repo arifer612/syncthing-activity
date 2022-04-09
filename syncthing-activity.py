@@ -8,10 +8,12 @@ import os
 import argparse
 import subprocess
 
-__author__             = "Arif Er <arifer612@pm.me>"
-__original_author__    = "Jan-Piet Mens <jp@mens.de>"
-__copyright__          = "Copyright 2019 Jan-Piet Mens"
-__license__            = "GNU General Public License"
+__author__ = "Jan-Piet Mens <jp@mens.de>"
+__copyright__ = "Copyright 2019 Jan-Piet Mens"
+__license__ = "GNU General Public License"
+__maintainer__ = "Arif Er <arifer612@pm.me>"
+__status__ = "Development"
+__version__ = "1.0.0"
 
 last_id = 0
 folders = {}

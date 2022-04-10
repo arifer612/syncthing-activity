@@ -145,19 +145,15 @@ def process(array: dict, args: argparse.Namespace, unknown_args: list) -> None:
                     "path": os.path.join(folder_path, event["data"]["item"]),
                 }
 
-                if payload["error"]:
-                    print(
-                        "{folder_label:>15} ERROR {action:<10s} "
-                        "{item} {error}".format(**payload)
-                        )
-                    continue
-
                 print(
-                    "{folder_label:>15} {type:<5s} {action:<10s} "
+                    "{folder_label:>15} {type:<6s} {action:<10s} "
                     "{item}".format(**payload)
                 )
 
                 if args.script and args.script != "None":
+                    # Note that syncs with errors will still make it here and
+                    # need to be handled in external scripts by looking at the
+                    # 'error' keyword of the payload.
                     main_call = [
                         sys.executable,
                         args.script,

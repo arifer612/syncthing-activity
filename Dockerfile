@@ -11,13 +11,15 @@ LABEL version="latest"
 ENV SYNCTHING_URL="http://localhost:8384"
 ENV SYNCTHING_API=""
 ENV API_TYPE="ItemFinished"
-ENV SCRIPT="'"
+ENV SCRIPT=""
 ENV ARGUMENTS=""
 
 COPY . /opt/app
 WORKDIR /opt/app
 RUN pip install -r requirements.txt
-RUN install -m 755 syncthing-activity.py /usr/bin/syncthing-activity
+RUN chmod 755 syncthing-activity.py
 
+VOLUME /scripts
 WORKDIR /scripts
-ENTRYPOINT syncthing-activity ${API_TYPE} --script ${SCRIPT} ${ARGUMENTS}
+RUN [[ -f /scripts/requirements.txt ]] && pip install -r /scripts/requirements.txt
+ENTRYPOINT /opt/app/syncthing-activity.py --event ${API_TYPE} --script ${SCRIPT} ${ARGUMENTS}

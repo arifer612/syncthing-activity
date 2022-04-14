@@ -16,7 +16,11 @@ __copyright__ = "Copyright 2019 Jan-Piet Mens"
 __license__ = "GNU General Public License"
 __maintainer__ = "Arif Er <arifer612@pm.me>"
 __status__ = "Development"
-__version__ = "1.1.0"
+with open(
+        os.path.join(os.path.dirname(os.path.realpath(__file__)), "VERSION"),
+        "r", encoding="UTF-8"
+) as version:
+    __version__ = version.read().strip()
 
 # Global variables
 LAST_ID = 0

@@ -43,6 +43,11 @@ jobs:
         with:
           cosign-release: 'v1.4.0'
 
+      # https://stackoverflow.com/a/64724369
+      - name: Get current version
+        run: |
+          VER=$(cat VERSION)
+          echo "VERSION=$VER" >> $GITHUB_ENV
 
       # Workaround: https://github.com/docker/build-push-action/issues/461
       - name: Setup Docker buildx
@@ -66,7 +71,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           flavor: |
-            latest=true
+            latest=auto
           tags: |
             type=ref,event=branch
             type=semver,pattern={{raw}}
@@ -80,6 +85,8 @@ jobs:
         uses: docker/build-push-action@ad44023a93711e3deb337508980b4b5e9bcdc5dc
         with:
           context: .
+          build-args: |
+            "SCRIPT_VER=${{ env.VERSION }}"
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

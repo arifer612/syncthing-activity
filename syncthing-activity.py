@@ -1,130 +1,217 @@
 #!/usr/bin/env python3
+"""Watches a Syncthing instance's activity."""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+import warnings
 
 import requests
-import time
-import json
-import sys
-import os
-import argparse
-import subprocess
 
 __author__ = "Jan-Piet Mens <jp@mens.de>"
 __copyright__ = "Copyright 2019 Jan-Piet Mens"
 __license__ = "GNU General Public License"
 __maintainer__ = "Arif Er <arifer612@pm.me>"
 __status__ = "Development"
-__version__ = "1.0.0"
+with open(
+        os.path.join(os.path.dirname(os.path.realpath(__file__)), "VERSION"),
+        "r", encoding="UTF-8"
+) as version:
+    __version__ = version.read().strip()
 
-last_id = 0
-folders = {}
+# Global variables
+LAST_ID = 0
+FOLDERS = {}
 
-parser = argparse.ArgumentParser(description="Watch a Syncthing server")
-parser.add_argument("event", default="ItemFinished", type=str, nargs="?",
-                    help="Event API type. `ItemStarted' or `ItemFinished'")
-parser.add_argument("--script", const="", default="", type=str, nargs="?",
-                    help="Path to a script to run.")
-parser.add_argument("--dry_run", action="store_true",
-                    help="Perform a dry run")
-parser.add_argument("--quiet", action="store_true",
-                    help="Decrease verbosity")
-args = argparse.Namespace()
-unknown_args = []
+# Environment section
+_SYNCTHING_URL = os.getenv("SYNCTHING_URL", "http://localhost:8384")
+_SYNCTHING_API = os.getenv("SYNCTHING_API")
+_HEADERS = {"X-API-Key": _SYNCTHING_API}
 
-def getfolders(data):
 
-    global folders
+# argparse section
+parser = argparse.ArgumentParser(
+    description=(f"""
+    syncthing-activity {__version__}  ---  Watch a Syncthing server.
+    """),
+)
+parser.add_argument(
+    "--event",
+    type=str,
+    nargs="?",
+    const="ItemFinished",
+    default="ItemFinished",
+    help="Event API type. `ItemStarted' or `ItemFinished'.",
+)
+# Environment arguments
+envs = parser.add_argument_group(
+    "Environments", "Over-ride global environment variables."
+)
+envs.add_argument(
+    "--url",
+    type=str,
+    default=f"{_SYNCTHING_URL}",
+    help="Syncthing URL, defaults to http://localhost:8384. \
+    Using the SYNCTHING_URL environemnt.",
+)
+envs.add_argument(
+    "--api",
+    type=str,
+    default=f"{_SYNCTHING_API}",
+    help="Syncthing API key. Using the SYNCTHING_API environment.",
+)
 
-    for f in data['folders']:
-        folders[f["id"]] = {
-            "label" : f["label"],
-            "path"  : f["path"],
+# Script arguments
+scripts = parser.add_argument_group(
+    "Scripts", "Run a script along the watcher."
+)
+scripts.add_argument(
+    "--script",
+    type=str,
+    nargs="?",
+    const="",
+    default="",
+    help="Path to the script along with all the required arguments. \
+    For example: post-processor.py positional_arg1 --option_1 option_arg_1"
+)
+
+ARGS = argparse.Namespace()
+UNKNOWN_ARGS = []
+
+
+def getfolders():
+    """Retrieves folder labels and paths from Syncthing."""
+    global FOLDERS
+
+    FOLDERS = {}
+
+    response = requests.get(f"{ARGS.url}/rest/system/config",
+                            headers=_HEADERS)
+    data = json.loads(response.text)
+    for folder in data["folders"]:
+        FOLDERS[folder["id"]] = {
+            "label": folder["label"],
+            "path": folder["path"],
         }
 
-def process(array, event_type, script, dry_run, quiet, unknown_args):
 
-    global last_id
+def process(array: dict, args: argparse.Namespace, unknown_args: list) -> None:
+    """Parses API results into usable information.
+
+    With a script, a payload will be passed as a JSON dictionary. The structure
+    of the payload is:
+        {
+      "time": Event time in ISO format YYYY-MM-DDThh:mm:ss.sTZD.
+      "action": Event action (update, delete, metadata).
+      "type": Data type (file, dir).
+      "item": Relative path to item from folder root.
+      "error": Sync error result (null, error message).
+      "folder_label": Human readable folder label.
+      "folder_id": Machine readable folder id.
+      "path": Absolute path to item.
+    }
+
+    Args:
+        array: Syncthing API response.
+        args: This script's keyword and positional arguments.
+        unknown_args: The remaining arguments not declared in parser and are to
+    be passed into the external script.
+
+    Raises:
+        ResourceWarning: If a new folder is created on Syncthing and cannot be
+            updated here. Restarting the Syncthing instance may resolve this.
+    """
+    global LAST_ID
 
     for event in array:
-        if "type" in event and event["type"] == event_type:
-            last_id = event["id"]
+        if "type" in event and event["type"] == args.event:
+            LAST_ID = event["id"]
 
             folder_id = event["data"]["folder"]
-            folder_label = folders[folder_id]["label"]
-            folder_path = folders[folder_id]["path"]
+            if folder_id not in FOLDERS:  # Re-cache folder list
+                getfolders()
 
-            path = os.path.join(folder_path, event["data"]["item"])
-            time = event["time"]
-            action = event["data"]["action"]
-            data_type = event["data"]["type"]
-            item = event["data"]["item"]
+            try:
+                folder_label = FOLDERS[folder_id]["label"]
+                folder_path = FOLDERS[folder_id]["path"]
 
-            if script and script != "None":
-                main_call = ["/usr/bin/env", "python3", script,
-                               folder_label, data_type, action, item]
-                if dry_run:
-                    main_call.append("--dry_run")
-                if quiet:
-                    main_call.append("--quiet")
-                if unknown_args:
-                    main_call += unknown_args
-
-                subprocess.call(main_call)
-
-            else:
-                e = {
-                    "time"          : time,
-                    "action"        : action,
-                    "type"          : data_type,
-                    "item"          : item,
-                    "folder_label"  : folder_label,
-                    "folder_id"     : folder_id,
-                    "path"          : path,
+                payload = {
+                    "time": event["time"],
+                    "action": event["data"]["action"],
+                    "type": event["data"]["type"],
+                    "item": event["data"]["item"],
+                    "error": event["data"]["error"],
+                    "folder_label": folder_label,
+                    "folder_id": folder_id,
+                    "path": os.path.join(folder_path, event["data"]["item"]),
                 }
 
-                # print(json.dumps(e, indent=4))  ## For debugging
-                print("{folder_label:>15} {type:<5s} {action:<10s} {item}".format(**e))
+                print(
+                    "{folder_label:>15} {type:<6s} {action:<10s} "
+                    "{item}".format(**payload)
+                )
+
+                if args.script and args.script != "None":
+                    # Note that syncs with errors will still make it here and
+                    # need to be handled in external scripts by looking at the
+                    # 'error' keyword of the payload.
+                    main_call = [
+                        sys.executable,
+                        args.script,
+                        "--payload",
+                        json.dumps(payload, indent=4),
+                    ]
+                    if unknown_args:
+                        main_call += unknown_args
+
+                    subprocess.call(main_call)
+            except KeyError:
+                warnings.warn(f"WARNING! Folder ID {folder_id} cannot be "
+                              "accessed. Skipping this.", ResourceWarning)
 
 
-def main(url, api, _args=None, _unknown_args=None):
-    global args, unknown_args
-    if _args:
-        args, unknown_args = _args, _unknown_args
-    else:
-        args, unknown_args = parser.parse_known_args()
+def main(args: tuple = None) -> None:
+    """Main execution block.
 
-    headers = { "X-API-Key" : api }
+    Args:
+        args: Tuple of known arguments declared in parser and the remaining
+    unknown arguments.
+    """
+    global ARGS, UNKNOWN_ARGS, _HEADERS
 
-    r = requests.get("{0}/rest/system/config".format(url), headers=headers)
-    getfolders(json.loads(r.text))
+    ARGS, UNKNOWN_ARGS = args or parser.parse_known_args()
+
+    if ARGS.api is None:
+        print("Missing SYNCTHING_API in environment", file=sys.stderr)
+        sys.exit(2)
+
+    _HEADERS = {"X-API-Key": ARGS.api}
+
+    getfolders()
 
     while True:
-
         params = {
-            "since" : last_id,
-            "limit" : None,
-            "events" : args.event,
+            "since": LAST_ID,
+            "limit": None,
+            "events": ARGS.event,
         }
 
-        r = requests.get("{0}/rest/events".format(url), headers=headers, params=params)
-        if r.status_code == 200:
-            process(json.loads(r.text), args.event, args.script,
-                    args.dry_run, args.quiet, unknown_args)
-        elif r.status_code != 304:
+        response = requests.get(
+            f"{ARGS.url}/rest/events", headers=_HEADERS, params=params
+        )
+        if response.status_code == 200:
+            process(json.loads(response.text), ARGS, UNKNOWN_ARGS)
+        elif response.status_code != 304:
             time.sleep(60)
             continue
         time.sleep(10.0)
 
+
 if __name__ == "__main__":
-
-    url = os.getenv("SYNCTHING_URL", "http://localhost:8384")
-    api = os.getenv("SYNCTHING_API")
-    if api is None:
-        print("Missing SYNCTHING_API in environment", file=sys.stderr)
-        exit(2)
-
     try:
-        main(url, api, *parser.parse_known_args())
+        main(parser.parse_known_args())
     except KeyboardInterrupt:
-        exit(1)
-    except:
-        raise
+        sys.exit(0)

@@ -180,7 +180,7 @@ def main(args: tuple = None) -> None:
         args: Tuple of known arguments declared in parser and the remaining
     unknown arguments.
     """
-    global ARGS, UNKNOWN_ARGS, _HEADERS
+    global ARGS, UNKNOWN_ARGS, _HEADERS, LAST_ID
 
     ARGS, UNKNOWN_ARGS = args or parser.parse_known_args()
 
@@ -189,6 +189,19 @@ def main(args: tuple = None) -> None:
         sys.exit(2)
 
     _HEADERS = {"X-API-Key": ARGS.api}
+    params = {
+        "since": LAST_ID,
+        "limit": None,
+        "events": ARGS.event,
+    }
+
+    # Retrieve event ID when syncthing-activity starts up instead of starting
+    # from 0 if possible.
+    first_response = requests.get(
+        f"{ARGS.url}/rest/events", headers=_HEADERS, params=params
+    )
+    if first_response.status_code == 200:
+        LAST_ID = json.loads(first_response.content)[-1].get("id")
 
     getfolders()
 

@@ -1,5 +1,4 @@
 #+TITLE: syncthing-activity
-#+VERSION: 1.1.0-rc2
 
 This is a fork of [[https://github.com/jpmens/syncthing-activity][syncthing-activity]] by jpmens. The main difference between this
 fork and the original is the support parse relevant information to a script.
@@ -62,7 +61,7 @@ The help dialog explains everything you need to know.
 usage: syncthing-activity.py [-h] [--event [EVENT]] [--url URL] [--api API]
                              [--script [SCRIPT]]
 
-syncthing-activity 1.1.0-rc2 --- Watch a Syncthing server.
+syncthing-activity 1.1.0-rc3 --- Watch a Syncthing server.
 
 options:
   -h, --help         show this help message and exit

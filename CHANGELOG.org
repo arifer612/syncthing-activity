@@ -1,0 +1,32 @@
+#+TITLE: CHANGELOG
+
+** [fork] 2022-04-08
+- Forked from parent repository at [[https://github.com/jpmens/syncthing-activity]]. 
+
+** [1.0.0] 2022-04-09
+
+*** Changes
+- Compatibility with external scripts
+
+*** Additions
+- Dockerfile
+- GitHub workflow for the building and publishing of Dockerfile
+
+** [1.0.1] 2022-04-09
+
+*** Fixes
+- Remove hardcoded boolean values
+
+** [1.1.0] 2022-04-14
+
+*** Changes
+- Python script formatted according to PEP 8 and PEP 257
+- Python script made cross-platform by removing direct need for environment variables
+- README file updated with example for scripts
+- PYTHONUNBUFFERED environment to ensure output of print commands
+- Refrain from tracking from the start of time
+- Only build and publish Docker images on tags
+*** Additions
+- Git and Docker ignore files for Python cache files
+- VERSION file for updating Python script and Docker image versions
+- CHANGELOG file

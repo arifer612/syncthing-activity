@@ -1,79 +1,176 @@
-* syncthing-activity
+#+TITLE: syncthing-activity
+
 This is a fork of [[https://github.com/jpmens/syncthing-activity][syncthing-activity]] by jpmens. The main difference between this
 fork and the original is the support parse relevant information to a script.
 
-This small program uses [[https://syncthing.net][Syncthing]]'s [[https://docs.syncthing.net/dev/rest.html][REST API]] to determine the
-changes ocurring on the local instance of Syncthing. (No worries: the
-API is queried on the machine on which you run =syncthing-activity=.)
+This small program uses [[https://syncthing.net][Syncthing]]'s [[https://docs.syncthing.net/dev/rest.html][REST API]] to determine the changes to files
+and directories occurring on the local instance of Syncthing. The relevant event
+API are [[https://docs.syncthing.net/events/itemfinished.html][ItemFinished]] and [[https://docs.syncthing.net/events/itemstarted.html][ItemStarted]]. It also allows users to connect the API
+results to external scripts. 
 
-** apikey
+** Table of contents :TOC_3_gh:
+  - [[#setup][Setup]]
+    - [[#requirements][Requirements]]
+    - [[#installation][Installation]]
+    - [[#api-key][API key]]
+  - [[#usage][Usage]]
+    - [[#events][Events]]
+    - [[#environments][Environments]]
+    - [[#scripts][Scripts]]
+  - [[#example][Example]]
+  - [[#docker][docker]]
+
+** Setup
+=syncthing-activity= is not hard to run for relatively modern machines. However,
+if you are planning to run it on a headless server, I highly recommend running
+it as a Docker container, instructions [[#docker][below]].
+
+You will need to have knowledge of your Syncthing instance's URL as well as its
+[[#api-key][API key]].
+
+
+*** Requirements
+- Python 3.6 or later
+
+*** Installation
+With a working Syncthing instance, simply clone this repository or download the
+script file as-is.
+#+BEGIN_EXAMPLE shell
+  git clone https://github.com/arifer612/syncthing-activity
+#+END_EXAMPLE
+
+Install the necessary dependencies using =pip= while in the directory.
+#+BEGIN_EXAMPLE shell
+  python3 -m pip install -r requirements.txt
+#+END_EXAMPLE
+
+*** API key
 Open Syncthing's Web UI at =http://127.0.0.1:8384=, click on /Actions/
 and /Settings/. On the Settings panel, /General/ tab you'll find the API
-key on the right. Copy that into an environment variable before
-launching =syncthing-activity.py=:
+key on the right. If your Syncthing is hosted on a different machine or port,
+change the values accordingly.
 
-#+begin_src sh
-  export SYNCTHING_APIKEY="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-  ./syncthing-activity.py
-#+end_src
+** Usage
+The help dialog explains everything you need to know.
+#+BEGIN_SRC shell :results output :exports both
+  ./syncthing-activity.py -h
+#+END_SRC
 
-If your Syncthing is listening on a special URL, you can additionally
-override the default URL:
+#+RESULTS:
+#+BEGIN_EXAMPLE
+usage: syncthing-activity.py [-h] [--event [EVENT]] [--url URL] [--api API]
+                             [--script [SCRIPT]]
 
-#+begin_src sh
-  export SYNCTHING_URL="http://localhost:8384"
-#+end_src
+syncthing-activity 1.1.0-rc3 --- Watch a Syncthing server.
 
-** usage
+options:
+  -h, --help         show this help message and exit
+  --event [EVENT]    Event API type. `ItemStarted' or `ItemFinished'.
+
+Environments:
+  Over-ride global environment variables.
+
+  --url URL          Syncthing URL, defaults to http://localhost:8384. Using
+                     the SYNCTHING_URL environemnt.
+  --api API          Syncthing API key. Using the SYNCTHING_API environment.
+
+Scripts:
+  Run a script along the watcher.
+
+  --script [SCRIPT]  Path to the script along with all the required arguments.
+                     For example: post-processor.py positional_arg1 --option_1
+                     option_arg_1
+#+END_EXAMPLE
+
+*** Events
 =syncthing-activity=, when executed as-is, behaves just as the original
 repository except with the event API =ItemFinished= instead of =ItemStarted=. It
-can be reverted by specifying =ItemStarted= as the first positional argument.
-#+begin_src shell
-  syncthing-activity.py "ItemStarted"
-#+end_src
+can be reverted by specifying =ItemStarted= using the =--event= flag.
+#+BEGIN_EXAMPLE shell
+  ./syncthing-activity.py --event "ItemStarted"
+#+END_EXAMPLE
 The event APIs that can be used as positional arguments are =ItemFinished= and =ItemStarted=.
 
+*** Environments
+As with the [[https://github.com/jpmens/syncthing-activity#apikey][original repository]], you can set the Syncthing API key and URL as
+environment variables before executing =syncthing-activity=.
+
+#+BEGIN_EXAMPLE
+  export SYNCTHING_API="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  export SYNCTHING_URL="http://localhost:8384"
+  ./syncthing-activity.py
+#+END_EXAMPLE
+
+If you do not wish to directly export it as an environment variable or for
+Windows users, there are environment flags that can be used instead.
+#+BEGIN_EXAMPLE
+  python3 -m syncthing-activity --url https://localhost:8384 --api xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#+END_EXAMPLE
+
+*** Scripts
 If the purpose is to parse the API results to a script for processing, you can
 do so by making use of the =--script= option. Additional arguments are passed
 through as-is after specifiying the script.
 
 For example, the following snippet will use the =ItemFinished= event API and
-pass the arguments as well as =--additional-arg1= to a script in
-=~/scripts/syncthing-postprocess=
-#+begin_src shell
-  syncthing-activity.py --script "~/scripts/syncthing-postprocess" --additional-arg1
-#+end_src
+pass the positional argument =positional_arg1=, option =--option1= as well as
+its argument =option1_arg=, and the flag =--flag1= to the script at path
+=~/scripts/syncthing-postprocess=.
+#+BEGIN_EXAMPLE shell
+  syncthing-activity.py --script "~/scripts/syncthing-postprocess" positonal_arg1 --option1 option1_arg --flag1
+#+END_EXAMPLE
 
-Additional flags that can be passed to the script (these need to be set up in
-the script manually):
-- =--dry_run= performs a dry run of the script
-- =--quiet= reduces the verbosity of the script
+To get your script to work with =syncthing-activity=, it must be made to accept
+an argument with the option =--payload=. The contents will be a JSON object
+defined as such:
+#+BEGIN_EXAMPLE json
+  {
+      "time": Event time in ISO format YYYY-MM-DDThh:mm:ss.sTZD.
+      "action": Event action (update, delete, metadata).
+      "type": Data type (file, dir).
+      "item": Relative path to item from folder root.
+      "error": Sync error result (null, error message).
+      "folder_label": Human readable folder label.
+      "folder_id": Machine readable folder id.
+      "path": Absolute path to item.
+  }
+#+END_EXAMPLE
 
-** example
+External Python scripts with dependencies should come with a =requirements.txt=
+that gets mounted along with the script into the =/scripts= directory of the
+container. It may also be a good idea to include a dry-run flag in your script
+before putting it into production.
+
+** Example
 In the absence of a script, the program currently outputs the folder label in
 which an update is detected, the object (file or directory) and type of update
-as well as the object's name:
+as well as the object's name. Passing a script, it can be reflected in the
+output as well.
 
-#+begin_example
-      owntracks file  update     platform/ansible/templates/config.f
-           take file  update     configs/contacts/mac/.git/index
-           take file  metadata   configs/contacts/mac/ab.json
-           take file  update     playground/syncthing/events/requirements.txt
-           take file  update     playground/syncthing/events/syncthing-activity.py
-      on-github file  update     owntracks/recorder/Changelog
-           take dir   update     playground/syncthing/events/docs
-           take file  delete     playground/syncthing/events/menu
-#+end_example
-
-
-With a script, these information will be passed to the script.
+#+BEGIN_EXAMPLE
+  owntracks file   update     platform/ansible/templates/config.f
+            script mover.py   Moving item config.f to directory at ~/archives
+       take file   update     configs/contacts/mac/.git/index
+            script mover.py   Moving item index to directory at ~/archives
+       take file   metadata   configs/contacts/mac/ab.json
+       take file   update     playground/syncthing/events/requirements.txt
+            script mover.py   Moving item requirements.txt to directory at ~/archives
+       take file   update     playground/syncthing/events/syncthing-activity.py
+            script mover.py   Moving item syncthing-activity.py to directory at ~/archives
+  on-github file   update     owntracks/recorder/Changelog
+            script mover.py   Moving item Changelog to directory at ~/archives
+       take dir    update     playground/syncthing/events/docs
+            script mover.py   Creating directory docs at ~/archives
+       take file   delete     playground/syncthing/events/menu
+            script mover.py   Moving item menua to directory at ~/archives
+#+END_EXAMPLE
 
 ** docker
 This mini-application can be deployed through a Docker image. You can retrieve
 the image from Dockerhub using
-#+begin_src shell
+#+BEGIN_EXAMPLE shell
   docker pull arifer612/syncthing-activity:latest
-#+end_src
+#+END_EXAMPLE
 
 When running with =docker run=, feed the necessary environment variables using
 the =-e= flag. Environments:
@@ -87,13 +184,13 @@ the =-e= flag. Environments:
 - =ARGUMENTS=: Additional arguments that can be passed into the script.
 
 Example:
-#+begin_src shell
+#+BEGIN_EXAMPLE shell
   docker run -d \
          -v ~/scripts/:/scripts:rw \
-         -e "EVENT_API=ItemFinished"
+         -e "API_TYPE=ItemFinished"
          -e "SYNCTHING_URL=http://localhost:8384" \
          -e "SYNCTHING_API=xxxxx" \
-         -e "SCRIPT=syncthing-postprocess.py" \
-         -e "ARGUMENTS=positional_arg1 --opt1 arg1 --opt2 arg2" \
+         -e "SCRIPT=syncthing-postprocess" \
+         -e "ARGUMENTS=positional_arg1 --option1 option1_arg1 --flag1" \
          arifer612/syncthing-activity:latest
-#+end_src
+#+END_EXAMPLE

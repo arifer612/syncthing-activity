@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 import warnings
+import socket
 
 import requests
 
@@ -98,6 +99,27 @@ def getfolders():
         }
 
 
+def activeSyncthing() -> bool:
+    """Checks if Syncthing is active."""
+    protocol, address = ARGS.url.split("://")
+    if ":" in address:
+        ip, port = address.split(":")
+    else:
+        ip = address
+        try:
+            port = socket.getservbyname(protocol)
+        except OSError:
+            port = 80
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.connect((ip, int(port)))
+        sock.shutdown(2)
+        return True
+    except Exception:
+        return False
+
+
 def process(array: dict, args: argparse.Namespace, unknown_args: list) -> None:
     """Parses API results into usable information.
 
@@ -127,7 +149,7 @@ def process(array: dict, args: argparse.Namespace, unknown_args: list) -> None:
     global LAST_ID
 
     for event in array:
-        if "type" in event and event["type"] == args.event:
+        if "type"in event and event["type"] == args.event:
             LAST_ID = event["id"]
 
             folder_id = event["data"]["folder"]
@@ -182,11 +204,19 @@ def main(args: tuple = None) -> None:
     """
     global ARGS, UNKNOWN_ARGS, _HEADERS, LAST_ID
 
+    print("... Starting up syncthing-activity ...")
+
     ARGS, UNKNOWN_ARGS = args or parser.parse_known_args()
 
     if ARGS.api is None:
         print("Missing SYNCTHING_API in environment", file=sys.stderr)
         sys.exit(2)
+
+    print(f"... Connecting to Syncthing hosted at {ARGS.url} ...")
+
+    if not activeSyncthing():
+        print("... Syncthing is not running. Stopping the watcher. ...")
+        sys.exit(0)
 
     _HEADERS = {"X-API-Key": ARGS.api}
     params = {
@@ -197,11 +227,25 @@ def main(args: tuple = None) -> None:
 
     # Retrieve event ID when syncthing-activity starts up instead of starting
     # from 0 if possible.
-    first_response = requests.get(
-        f"{ARGS.url}/rest/events", headers=_HEADERS, params=params
-    )
-    if first_response.status_code == 200:
-        LAST_ID = json.loads(first_response.content)[-1].get("id")
+
+    # Set the timeout to 5s to account for situations when Syncthing is just
+    # started and do not have any recorded events matching ARGS.event.
+    try:
+        first_response = requests.get(
+            f"{ARGS.url}/rest/events", headers=_HEADERS, params=params,
+            timeout=5
+        )
+        if first_response.status_code == 200:
+            LAST_ID = json.loads(first_response.content)[-1].get("id")
+    except requests.exceptions.ConnectionError:
+        pass
+    except Exception as err:
+        print("... Unknown first connection error: ", err, " ...")
+        print("... Continuing with connection ...")
+
+    print("... Successfully connected to Syncthing ...")
+    print(f"... {LAST_ID} {ARGS.event} events occurred in the past ...")
+    print("... Starting watcher process ...")
 
     getfolders()
 
@@ -212,15 +256,22 @@ def main(args: tuple = None) -> None:
             "events": ARGS.event,
         }
 
-        response = requests.get(
-            f"{ARGS.url}/rest/events", headers=_HEADERS, params=params
-        )
-        if response.status_code == 200:
-            process(json.loads(response.text), ARGS, UNKNOWN_ARGS)
-        elif response.status_code != 304:
-            time.sleep(60)
-            continue
-        time.sleep(10.0)
+        try:
+            response = requests.get(
+                f"{ARGS.url}/rest/events", headers=_HEADERS, params=params
+            )
+            if response.status_code == 200:
+                process(json.loads(response.text), ARGS, UNKNOWN_ARGS)
+            elif response.status_code != 304:
+                time.sleep(60)
+                continue
+            time.sleep(10.0)
+        except requests.exceptions.ChunkedEncodingError:
+            # Check if Syncthing is restarted.
+            time.sleep(10.0)
+            if not activeSyncthing():
+                print("... Syncthing may not be running. Stopping the watcher. ...")
+                sys.exit(1)
 
 
 if __name__ == "__main__":

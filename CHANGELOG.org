@@ -1,23 +1,20 @@
 #+TITLE: CHANGELOG
 
-** [fork] 2022-04-08
-- Forked from parent repository at [[https://github.com/jpmens/syncthing-activity]]. 
-
-** [1.0.0] 2022-04-09
+** v1.1.1 [2022-04-17]
 
 *** Changes
-- Compatibility with external scripts
-
-*** Additions
-- Dockerfile
-- GitHub workflow for the building and publishing of Dockerfile
-
-** [1.0.1] 2022-04-09
+- CHANGELOG order and looks, use Org inactive timestamps
 
 *** Fixes
-- Remove hardcoded boolean values
+- Handle connection error when Syncthing is restarted
+- Handle timeout error when Syncthing is first started
 
-** [1.1.0] 2022-04-14
+** v1.1.0 [2022-04-14] 
+
+*** Additions
+- Git and Docker ignore files for Python cache files
+- VERSION file for updating Python script and Docker image versions
+- CHANGELOG file
 
 *** Changes
 - Python script formatted according to PEP 8 and PEP 257
@@ -26,7 +23,19 @@
 - PYTHONUNBUFFERED environment to ensure output of print commands
 - Refrain from tracking from the start of time
 - Only build and publish Docker images on tags
+** v1.0.1 [2022-04-09]
+
+*** Fixes
+- Remove hardcoded boolean values
+
+** v1.0.0 [2022-04-09]
+
 *** Additions
-- Git and Docker ignore files for Python cache files
-- VERSION file for updating Python script and Docker image versions
-- CHANGELOG file
+- Dockerfile
+- GitHub workflow for the building and publishing of Dockerfile
+
+*** Changes
+- Compatibility with external scripts
+
+** fork [2022-04-08]
+- Forked from parent repository at [[https://github.com/jpmens/syncthing-activity]]. 

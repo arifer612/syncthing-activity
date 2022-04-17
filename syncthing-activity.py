@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 import warnings
+import socket
 
 import requests
 
@@ -96,6 +97,27 @@ def getfolders():
             "label": folder["label"],
             "path": folder["path"],
         }
+
+
+def activeSyncthing() -> bool:
+    """Checks if Syncthing is active."""
+    protocol, address = ARGS.url.split("://")
+    if ":" in address:
+        ip, port = address.split(":")
+    else:
+        ip = address
+        try:
+            port = socket.getservbyname(protocol)
+        except OSError:
+            port = 80
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.connect((ip, int(port)))
+        sock.shutdown(2)
+        return True
+    except Exception:
+        return False
 
 
 def process(array: dict, args: argparse.Namespace, unknown_args: list) -> None:
@@ -192,6 +214,10 @@ def main(args: tuple = None) -> None:
 
     print(f"... Connecting to Syncthing hosted at {ARGS.url} ...")
 
+    if not activeSyncthing():
+        print("... Syncthing is not running. Stopping the watcher. ...")
+        sys.exit(0)
+
     _HEADERS = {"X-API-Key": ARGS.api}
     params = {
         "since": LAST_ID,
@@ -214,8 +240,8 @@ def main(args: tuple = None) -> None:
     except requests.exceptions.ConnectionError:
         pass
     except Exception as err:
-        print("Unknown first connection error: ", err)
-        print("Continuing with connection")
+        print("... Unknown first connection error: ", err, " ...")
+        print("... Continuing with connection ...")
 
     print("... Successfully connected to Syncthing ...")
     print(f"... {LAST_ID} {ARGS.event} events occurred in the past ...")
@@ -230,15 +256,22 @@ def main(args: tuple = None) -> None:
             "events": ARGS.event,
         }
 
-        response = requests.get(
-            f"{ARGS.url}/rest/events", headers=_HEADERS, params=params
-        )
-        if response.status_code == 200:
-            process(json.loads(response.text), ARGS, UNKNOWN_ARGS)
-        elif response.status_code != 304:
-            time.sleep(60)
-            continue
-        time.sleep(10.0)
+        try:
+            response = requests.get(
+                f"{ARGS.url}/rest/events", headers=_HEADERS, params=params
+            )
+            if response.status_code == 200:
+                process(json.loads(response.text), ARGS, UNKNOWN_ARGS)
+            elif response.status_code != 304:
+                time.sleep(60)
+                continue
+            time.sleep(10.0)
+        except requests.exceptions.ChunkedEncodingError:
+            # Check if Syncthing is restarted.
+            time.sleep(10.0)
+            if not activeSyncthing():
+                print("... Syncthing may not be running. Stopping the watcher. ...")
+                sys.exit(1)
 
 
 if __name__ == "__main__":

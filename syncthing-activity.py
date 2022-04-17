@@ -127,7 +127,7 @@ def process(array: dict, args: argparse.Namespace, unknown_args: list) -> None:
     global LAST_ID
 
     for event in array:
-        if "type" in event and event["type"] == args.event:
+        if "type"in event and event["type"] == args.event:
             LAST_ID = event["id"]
 
             folder_id = event["data"]["folder"]
@@ -182,11 +182,15 @@ def main(args: tuple = None) -> None:
     """
     global ARGS, UNKNOWN_ARGS, _HEADERS, LAST_ID
 
+    print("... Starting up syncthing-activity ...")
+
     ARGS, UNKNOWN_ARGS = args or parser.parse_known_args()
 
     if ARGS.api is None:
         print("Missing SYNCTHING_API in environment", file=sys.stderr)
         sys.exit(2)
+
+    print(f"... Connecting to Syncthing hosted at {ARGS.url} ...")
 
     _HEADERS = {"X-API-Key": ARGS.api}
     params = {
@@ -197,11 +201,25 @@ def main(args: tuple = None) -> None:
 
     # Retrieve event ID when syncthing-activity starts up instead of starting
     # from 0 if possible.
-    first_response = requests.get(
-        f"{ARGS.url}/rest/events", headers=_HEADERS, params=params
-    )
-    if first_response.status_code == 200:
-        LAST_ID = json.loads(first_response.content)[-1].get("id")
+
+    # Set the timeout to 5s to account for situations when Syncthing is just
+    # started and do not have any recorded events matching ARGS.event.
+    try:
+        first_response = requests.get(
+            f"{ARGS.url}/rest/events", headers=_HEADERS, params=params,
+            timeout=5
+        )
+        if first_response.status_code == 200:
+            LAST_ID = json.loads(first_response.content)[-1].get("id")
+    except requests.exceptions.ConnectionError:
+        pass
+    except Exception as err:
+        print("Unknown first connection error: ", err)
+        print("Continuing with connection")
+
+    print("... Successfully connected to Syncthing ...")
+    print(f"... {LAST_ID} {ARGS.event} events occurred in the past ...")
+    print("... Starting watcher process ...")
 
     getfolders()
 

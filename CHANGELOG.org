@@ -1,10 +1,11 @@
 #+TITLE: CHANGELOG
 
-** v1.1.2-rc2
+** v1.1.2-rc3
 
 *** Additions
 - flake8 ignore file to suppress line-too-long warnings while linting.
-- GitHub Actions for linting and documentation building.
+- GitHub Actions for linting and documentation building. The CHANGELOG and
+  VERSION files are also cleaned up.
 
 *** Changes
 - Phase out print in favour for logging of the Python script.

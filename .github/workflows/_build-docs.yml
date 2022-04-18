@@ -32,10 +32,23 @@ jobs:
       - name: Install Emacs
         run: sudo apt install emacs-nox --yes
 
-        # Parse version for master branch
+        # Parse VERSION for master branch
       - name: Cleanup VERSION
         if: ${{ github.ref == "/refs/heads/master" }}
+        run: echo "::set-output name=PRE_RELEASE::$(cat VERSION)"
         run: echo "$(cat VERSION | cut -d '-' -f 1)" > VERSION
+        run: echo "::set-output name=RELEASE::$(cat VERSION)"
+        id: version
+
+        # Parse CHANGELOG for master branch
+      - name: Cleanup CHANGELOG
+        needs: version
+        if: ${{ github.ref == "/refs/heads/master" }}
+        run: >
+          sed -i \
+          "s/${{ steps.version.outputs.PRE_RELEASE }}\
+          /${{steps.version.outputs.RELEASE }} [$(date +%F)]/" \
+          CHANGELOG.org
 
         # Run shell script to populate the README file
       - name: Update README.org
@@ -49,6 +62,7 @@ jobs:
           add:
             - "README.org"
             - "VERSION"
+            - "CHANGELOG.org"
           message: ${{ inputs.commit_message }}
           author_name: arifer612-bot
           author_email: 103842184+arifer612-bot@users.noreply.github.com

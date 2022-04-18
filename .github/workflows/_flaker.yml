@@ -1,5 +1,4 @@
 name: Linting
-description: Verify code and build the README file
 
 on: workflow_call
 

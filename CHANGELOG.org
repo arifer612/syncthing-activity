@@ -1,6 +1,6 @@
 #+TITLE: CHANGELOG
 
-** v1.1.2-rc3
+** v1.1.2 [2022-04-19]
 
 *** Additions
 - flake8 ignore file to suppress line-too-long warnings while linting.

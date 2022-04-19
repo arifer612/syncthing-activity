@@ -1,0 +1,74 @@
+name: Build documentation with Emacs
+
+on:
+  workflow_call:
+    inputs:
+      commit_message:
+        type: string
+        required: true
+        description: Commit message for updating documentation
+    secrets:
+      GPG_PRIVATE_KEY:
+        required: true
+        description: Private GPG key for signing commits
+      GPG_PASSPHRASE:
+        required: true
+        description: Passphrase for the private GPG key for signing commits
+
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+        # Import GPG key for signing of commits
+        # https://github.com/crazy-max/ghaction-import-gpg
+      - name: Import GPG key
+        id: import_gpg
+        uses: crazy-max/ghaction-import-gpg@v4
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+          git_user_signingkey: true
+          git_commit_gpgsign: true
+
+        # Install Emacs onto system
+      - name: Install Emacs
+        run: sudo apt install emacs-nox --yes
+
+        # Parse VERSION for master branch
+      - name: Cleanup VERSION
+        if: ${{ github.ref_name == 'master' }}
+        run: |
+          echo "PRE_RELEASE=$(cat VERSION)" >> $GITHUB_ENV
+          echo "$(cat VERSION | cut -d '-' -f 1)" > VERSION
+          echo "RELEASE=$(cat VERSION)" >> $GITHUB_ENV
+
+        # Parse CHANGELOG for master branch
+      - name: Cleanup CHANGELOG
+        if: ${{ github.ref_name == 'master' }}
+        run: >
+          sed -i
+          "s/${{ env.PRE_RELEASE }}$/${{ env.RELEASE }} [$(date +%F)]/"
+          CHANGELOG.org
+
+        # Run shell script to populate the README file
+      - name: Update README.org
+        run: .github/scripts/doc-builder.sh
+
+        # Publish changes to the current branch using my bot
+        # https://github.com/EndBug/add-and-commit
+      - name: Publish new docs
+        uses: EndBug/add-and-commit@v9
+        with:
+          add: '["README.org", "VERSION", "CHANGELOG.org"]'
+          message: ${{ inputs.commit_message }}
+          author_name: arifer612-bot
+          author_email: 103842184+arifer612-bot@users.noreply.github.com
+          committer_name: arifer612-bot
+          committer_email: 103842184+arifer612-bot@users.noreply.github.com
+          tag: "${{ env.RELEASE }} --force"
+          push: true

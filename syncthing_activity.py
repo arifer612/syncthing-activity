@@ -3,12 +3,13 @@
 
 import argparse
 import json
+import logging
 import os
+import socket
 import subprocess
 import sys
 import time
-import warnings
-import socket
+from types import TracebackType
 
 import requests
 
@@ -16,28 +17,34 @@ __author__ = "Jan-Piet Mens <jp@mens.de>"
 __copyright__ = "Copyright 2019 Jan-Piet Mens"
 __license__ = "GNU General Public License"
 __maintainer__ = "Arif Er <arifer612@pm.me>"
-__status__ = "Development"
 with open(
-        os.path.join(os.path.dirname(os.path.realpath(__file__)), "VERSION"),
-        "r", encoding="UTF-8"
+    os.path.join(os.path.dirname(os.path.realpath(__file__)), "VERSION"),
+    "r",
+    encoding="UTF-8",
 ) as version:
     __version__ = version.read().strip()
+    if "-" in __version__:
+        __status__ = "Development"
+    else:
+        __status__ = "Production"
+
 
 # Global variables
 LAST_ID = 0
 FOLDERS = {}
+ARGS = argparse.Namespace()
+UNKNOWN_ARGS = []
+
 
 # Environment section
 _SYNCTHING_URL = os.getenv("SYNCTHING_URL", "http://localhost:8384")
-_SYNCTHING_API = os.getenv("SYNCTHING_API")
+_SYNCTHING_API = os.getenv("SYNCTHING_API", "")
 _HEADERS = {"X-API-Key": _SYNCTHING_API}
 
 
 # argparse section
 parser = argparse.ArgumentParser(
-    description=(f"""
-    syncthing-activity {__version__}  ---  Watch a Syncthing server.
-    """),
+    description=(f"syncthing-activity {__version__}  ---  Watch a Syncthing server."),
 )
 parser.add_argument(
     "--event",
@@ -56,7 +63,7 @@ envs.add_argument(
     type=str,
     default=f"{_SYNCTHING_URL}",
     help="Syncthing URL, defaults to http://localhost:8384. \
-    Using the SYNCTHING_URL environemnt.",
+    Using the SYNCTHING_URL environment.",
 )
 envs.add_argument(
     "--api",
@@ -64,11 +71,8 @@ envs.add_argument(
     default=f"{_SYNCTHING_API}",
     help="Syncthing API key. Using the SYNCTHING_API environment.",
 )
-
 # Script arguments
-scripts = parser.add_argument_group(
-    "Scripts", "Run a script along the watcher."
-)
+scripts = parser.add_argument_group("Scripts", "Run a script along the watcher.")
 scripts.add_argument(
     "--script",
     type=str,
@@ -76,21 +80,43 @@ scripts.add_argument(
     const="",
     default="",
     help="Path to the script along with all the required arguments. \
-    For example: post-processor.py positional_arg1 --option_1 option_arg_1"
+    For example: post-processor.py positional_arg1 --option_1 option_arg_1",
 )
 
-ARGS = argparse.Namespace()
-UNKNOWN_ARGS = []
+
+# Logger
+logger = logging.getLogger(__name__)
+handler = logging.StreamHandler(stream=sys.stdout)
+formatter = logging.Formatter(
+    "%(asctime)s :: %(levelname)-8s :: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+)
+handler.setFormatter(formatter)
+logger.setLevel(logging.INFO)
+logger.addHandler(handler)
 
 
-def getfolders():
+def handle_exception(
+    exc_type: type, exc_value: int, exc_traceback: TracebackType
+) -> None:
+    """Log any unexpected exceptions through the logger.
+
+    Retrieved from https://stackoverflow.com/a/16993115
+    """
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    logger.exception(
+        "Unexpected exception", exc_info=(exc_type, exc_value, exc_traceback)
+    )
+
+
+def get_folders() -> None:
     """Retrieves folder labels and paths from Syncthing."""
     global FOLDERS
 
     FOLDERS = {}
 
-    response = requests.get(f"{ARGS.url}/rest/system/config",
-                            headers=_HEADERS)
+    response = requests.get(f"{ARGS.url}/rest/system/config", headers=_HEADERS)
     data = json.loads(response.text)
     for folder in data["folders"]:
         FOLDERS[folder["id"]] = {
@@ -99,13 +125,16 @@ def getfolders():
         }
 
 
-def activeSyncthing() -> bool:
+def active_syncthing() -> bool:
     """Checks if Syncthing is active."""
     protocol, address = ARGS.url.split("://")
+    if not address:
+        protocol, address = "http", protocol
+
     if ":" in address:
-        ip, port = address.split(":")
+        host, port = address.split(":")
     else:
-        ip = address
+        host = address
         try:
             port = socket.getservbyname(protocol)
         except OSError:
@@ -113,11 +142,22 @@ def activeSyncthing() -> bool:
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        sock.connect((ip, int(port)))
+        sock.connect((host, int(port)))
         sock.shutdown(2)
         return True
-    except Exception:
+    except (ConnectionRefusedError, OSError):
         return False
+
+
+def close_logger(exit_code: int) -> None:
+    """Graciously closes the logger and ends the watcher.
+
+    Args:
+        exit_code: System exit code
+    """
+    logger.info("Ending syncthing-activity")
+    logging.shutdown()
+    sys.exit(exit_code)
 
 
 def process(array: dict, args: argparse.Namespace, unknown_args: list) -> None:
@@ -141,20 +181,16 @@ def process(array: dict, args: argparse.Namespace, unknown_args: list) -> None:
         args: This script's keyword and positional arguments.
         unknown_args: The remaining arguments not declared in parser and are to
     be passed into the external script.
-
-    Raises:
-        ResourceWarning: If a new folder is created on Syncthing and cannot be
-            updated here. Restarting the Syncthing instance may resolve this.
     """
     global LAST_ID
 
     for event in array:
-        if "type"in event and event["type"] == args.event:
+        if "type" in event and event["type"] == args.event:
             LAST_ID = event["id"]
 
             folder_id = event["data"]["folder"]
             if folder_id not in FOLDERS:  # Re-cache folder list
-                getfolders()
+                get_folders()
 
             try:
                 folder_label = FOLDERS[folder_id]["label"]
@@ -171,9 +207,8 @@ def process(array: dict, args: argparse.Namespace, unknown_args: list) -> None:
                     "path": os.path.join(folder_path, event["data"]["item"]),
                 }
 
-                print(
-                    "{folder_label:>15} {type:<6s} {action:<10s} "
-                    "{item}".format(**payload)
+                logger.info(
+                    "%(folder_label)15s %(type)-6s %(action)-10s %(item)s", payload
                 )
 
                 if args.script and args.script != "None":
@@ -191,8 +226,10 @@ def process(array: dict, args: argparse.Namespace, unknown_args: list) -> None:
 
                     subprocess.call(main_call)
             except KeyError:
-                warnings.warn(f"WARNING! Folder ID {folder_id} cannot be "
-                              "accessed. Skipping this.", ResourceWarning)
+                logger.warning(
+                    "WARNING! Folder ID %s cannot be accessed. Skipping this.",
+                    folder_id,
+                )
 
 
 def main(args: tuple = None) -> None:
@@ -204,19 +241,20 @@ def main(args: tuple = None) -> None:
     """
     global ARGS, UNKNOWN_ARGS, _HEADERS, LAST_ID
 
-    print("... Starting up syncthing-activity ...")
+    sys.excepthook = handle_exception
+    logger.info("Starting up syncthing-activity")
 
     ARGS, UNKNOWN_ARGS = args or parser.parse_known_args()
 
-    if ARGS.api is None:
-        print("Missing SYNCTHING_API in environment", file=sys.stderr)
-        sys.exit(2)
+    if not ARGS.api:
+        logger.error("Missing SYNCTHING_API in environment")
+        close_logger(2)
 
-    print(f"... Connecting to Syncthing hosted at {ARGS.url} ...")
+    logger.info("Connecting to Syncthing hosted at %s", ARGS.url)
 
-    if not activeSyncthing():
-        print("... Syncthing is not running. Stopping the watcher. ...")
-        sys.exit(0)
+    if not active_syncthing():
+        logger.info("Syncthing is not running. Stopping the watcher.")
+        close_logger(127)
 
     _HEADERS = {"X-API-Key": ARGS.api}
     params = {
@@ -232,22 +270,19 @@ def main(args: tuple = None) -> None:
     # started and do not have any recorded events matching ARGS.event.
     try:
         first_response = requests.get(
-            f"{ARGS.url}/rest/events", headers=_HEADERS, params=params,
-            timeout=5
+            f"{ARGS.url}/rest/events", headers=_HEADERS, params=params, timeout=5
         )
         if first_response.status_code == 200:
             LAST_ID = json.loads(first_response.content)[-1].get("id")
     except requests.exceptions.ConnectionError:
+        # If timeout, then LAST_ID is 0 and needs not be changed.
         pass
-    except Exception as err:
-        print("... Unknown first connection error: ", err, " ...")
-        print("... Continuing with connection ...")
 
-    print("... Successfully connected to Syncthing ...")
-    print(f"... {LAST_ID} {ARGS.event} events occurred in the past ...")
-    print("... Starting watcher process ...")
+    logger.info("Successfully connected to Syncthing")
+    logger.info("%d %s events occurred in the past", LAST_ID, ARGS.event)
+    logger.info("Starting watcher process")
 
-    getfolders()
+    get_folders()
 
     while True:
         params = {
@@ -260,22 +295,25 @@ def main(args: tuple = None) -> None:
             response = requests.get(
                 f"{ARGS.url}/rest/events", headers=_HEADERS, params=params
             )
+
             if response.status_code == 200:
                 process(json.loads(response.text), ARGS, UNKNOWN_ARGS)
             elif response.status_code != 304:
                 time.sleep(60)
                 continue
             time.sleep(10.0)
+
         except requests.exceptions.ChunkedEncodingError:
             # Check if Syncthing is restarted.
             time.sleep(10.0)
-            if not activeSyncthing():
-                print("... Syncthing may not be running. Stopping the watcher. ...")
-                sys.exit(1)
+            if not active_syncthing():
+                logger.info("Syncthing may not be running. Stopping the watcher.")
+                close_logger(127)
 
 
 if __name__ == "__main__":
     try:
         main(parser.parse_known_args())
     except KeyboardInterrupt:
-        sys.exit(0)
+        sys.stderr.write("\r")  # Clear ^C from showing
+        close_logger(0)

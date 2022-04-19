@@ -21,10 +21,10 @@ ENV PYTHONUNBUFFERED=1
 COPY . /opt/app
 WORKDIR /opt/app
 RUN pip install -r requirements.txt
-RUN chmod 755 syncthing-activity.py
+RUN chmod 755 syncthing_activity.py
 
 VOLUME /scripts
 WORKDIR /scripts
 RUN [[ -f /scripts/requirements.txt ]] && pip install -r \
     /scripts/requirements.txt || exit 0
-ENTRYPOINT /opt/app/syncthing-activity.py --event ${API_TYPE} --script ${SCRIPT} ${ARGUMENTS}
+ENTRYPOINT /opt/app/syncthing_activity.py --event ${API_TYPE} --script ${SCRIPT} ${ARGUMENTS}

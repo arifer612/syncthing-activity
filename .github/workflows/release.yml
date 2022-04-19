@@ -1,0 +1,23 @@
+name: Cleanup and build README for release
+
+on:
+  push:
+    branches: master
+  pull_request:
+    branches: master
+
+concurrency:
+  group: ci-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  call-flaker:
+    uses: ./.github/workflows/_flaker.yml
+
+  call-builder:
+    uses: ./.github/workflows/_build-docs.yml
+    with:
+      commit_message: "Bump VERSION and update changes to README and CHANGELOG"
+    secrets:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}

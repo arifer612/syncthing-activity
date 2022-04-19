@@ -52,8 +52,8 @@ change the values accordingly.
 
 ** Usage
 The help dialog explains everything you need to know.
-#+BEGIN_SRC shell :results output :exports both
-  ./syncthing-activity.py -h
+#+BEGIN_SRC shell :results output :exports results
+  ./syncthing_activity.py -h
 #+END_SRC
 
 #+RESULTS:

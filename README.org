@@ -58,12 +58,12 @@ The help dialog explains everything you need to know.
 
 #+RESULTS:
 #+BEGIN_EXAMPLE
-usage: syncthing-activity.py [-h] [--event [EVENT]] [--url URL] [--api API]
+usage: syncthing_activity.py [-h] [--event [EVENT]] [--url URL] [--api API]
                              [--script [SCRIPT]]
 
-syncthing-activity 1.1.0-rc3 --- Watch a Syncthing server.
+syncthing-activity v1.1.2 --- Watch a Syncthing server.
 
-options:
+optional arguments:
   -h, --help         show this help message and exit
   --event [EVENT]    Event API type. `ItemStarted' or `ItemFinished'.
 
@@ -71,7 +71,7 @@ Environments:
   Over-ride global environment variables.
 
   --url URL          Syncthing URL, defaults to http://localhost:8384. Using
-                     the SYNCTHING_URL environemnt.
+                     the SYNCTHING_URL environment.
   --api API          Syncthing API key. Using the SYNCTHING_API environment.
 
 Scripts:

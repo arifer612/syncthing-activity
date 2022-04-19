@@ -1,9 +1,17 @@
 #+TITLE: CHANGELOG
 
-** v1.1.2-rc1
+** v1.1.2 [2022-04-19]
+
+*** Additions
+- flake8 ignore file to suppress line-too-long warnings while linting.
+- GitHub Actions for linting and documentation building. The CHANGELOG and
+  VERSION files are also cleaned up.
 
 *** Changes
 - Phase out print in favour for logging of the Python script.
+- Python script status metadata is determined dynamically depending on the
+  version. If it is hyphenated, e.g.'-rcX' or '-betaY' etc., then it should not
+  be on the master branch and is in development. Otherwise, it is in production.
 
 ** v1.1.1 [2022-04-17]
 
